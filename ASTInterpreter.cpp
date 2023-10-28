@@ -33,6 +33,22 @@ public:
         mEnv->integer(integer);
     }
 
+    /// test05.c 维护while语句
+    virtual void VisitWhileStmt(WhileStmt * whilestmt) {
+        // clang/AST/Stmt.h: class WhileStmt
+
+        Expr * cond = whilestmt->getCond();
+        Stmt * body = whilestmt->getBody();
+
+        Visit(cond);
+
+        // 每次循环都要重新 evaluate 一下 condition 的值，以更新 StackFrame 中保存的结果
+        while (mEnv->getExprValue(cond)) {
+            Visit(body);
+            Visit(cond);
+        }
+    }
+
     /// tet04.c 报错，看了看 AST 应该是 a=-10前面少了一个单元运算符
     virtual void VisitUnaryOperator(UnaryOperator * uop){
         VisitStmt(uop);
