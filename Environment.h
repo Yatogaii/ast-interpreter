@@ -103,9 +103,21 @@ public:
        mStack.back().bindStmt(integer, integer->getValue().getSExtValue());
    }
 
-   //   ast-interpreter: /tmp/tmp.iTUuIA9T0A/Environment.h:29:
-   //   int StackFrame::getDeclVal(clang::Decl*): Assertion `mVars.find(decl) != mVars.end()' failed.
-   // 需要先存入 mVars 对应的是 Decl
+   /// test04.c 处理 a=-10 中的 -
+   void unaop(UnaryOperator *uop){
+       // 保存此一元表达式的值到栈帧
+       // 确定操作类型
+       int result = 0;
+       switch (uop->getOpcode()) {
+           case UO_Minus:
+               int value = mStack.back().getStmtVal(uop->getSubExpr());
+               result = -value;
+               break;
+
+       }
+       mStack.back().bindStmt(uop, result);
+
+   }
 
     /// !TODO Support comparison operation
    void binop(BinaryOperator *bop) {

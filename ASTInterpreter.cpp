@@ -33,6 +33,13 @@ public:
         mEnv->integer(integer);
     }
 
+    /// tet04.c 报错，看了看 AST 应该是 a=-10前面少了一个单元运算符
+    virtual void VisitUnaryOperator(UnaryOperator * uop){
+        VisitStmt(uop);
+        mEnv->unaop(uop);
+
+   }
+
     virtual void VisitDeclRefExpr(DeclRefExpr * expr) {
 	   VisitStmt(expr);
 	   mEnv->declref(expr);
