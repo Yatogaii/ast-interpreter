@@ -80,8 +80,28 @@ public:
         if (mEnv->getExprValue(cond)) {
             VisitStmt(ifstmt->getThen());
         } else {
-            // 应该可以自动应对没有 Else 分支的情况，未做测试
-            VisitStmt(ifstmt->getElse());
+            if (Stmt * elseStmt = ifstmt->getElse()) {
+                Visit(elseStmt);
+            }
+        }
+    }
+
+    virtual void VisitForStmt(ForStmt * forstmt) {
+        // clang/AST/Stmt.h: class ForStmt
+
+        Stmt * init = forstmt->getInit();
+        Expr * cond = forstmt->getCond();
+        Expr * inc = forstmt->getInc();
+        Stmt * body = forstmt->getBody();
+
+        Visit(init);
+        Visit(cond);
+
+        // 每次循环都要重新 evaluate 一下 condition 的值，以更新 StackFrame 中保存的结果
+        while (mEnv->getExprValue(cond)) {
+            Visit(body);
+            Visit(inc);
+            Visit(cond);
         }
     }
 
