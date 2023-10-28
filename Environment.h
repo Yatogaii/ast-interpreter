@@ -81,6 +81,7 @@ public:
 			   else if (fdecl->getName().equals("main")) mEntry = fdecl;
 		   }
 	   }
+       // 这里应该是 push 进一个main函数，一个函数对应一个 stack
 	   mStack.push_back(StackFrame());
    }
 
@@ -102,13 +103,16 @@ public:
        mStack.back().bindStmt(integer, integer->getValue().getSExtValue());
    }
 
+   //   ast-interpreter: /tmp/tmp.iTUuIA9T0A/Environment.h:29:
+   //   int StackFrame::getDeclVal(clang::Decl*): Assertion `mVars.find(decl) != mVars.end()' failed.
+   // 需要先存入 mVars 对应的是 Decl
+
     /// !TODO Support comparison operation
    void binop(BinaryOperator *bop) {
 	   Expr * left = bop->getLHS();
 	   Expr * right = bop->getRHS();
 
 	   if (bop->isAssignmentOp()) {
-           // 为什么改了这句之后就能破解 36 行的 Assert？
            // 36 行的 assert 是从 map 里取不到值，应该需要先执行 bind
            // 应该不能手动 bind ，先 debug 过一遍流程吧
            // 需要在执行 bop 前，把 val 写进 mEnv 的 Stack
@@ -119,20 +123,99 @@ public:
 			   Decl * decl = declexpr->getFoundDecl();
 			   mStack.back().bindDecl(decl, val);
 		   }
-	   } else if(bop->isComparisonOp()){
-           //todo
+	   } else if(bop->isAdditiveOp() || bop->isMultiplicativeOp() || bop->isComparisonOp()){
+           int val1 = mStack.back().getStmtVal(left);
+           int val2 = mStack.back().getStmtVal(right);
+           int result;
+           switch (bop->getOpcode()) {
+               case BO_Add:
+                   /// val1 is base, val2 is offset
+                   if (left->getType()->isPointerType()) {
+                       int base = val1 % 10000;
+                       int offset = val1 / 10000 + val2;
+                       result = base + offset * 10000;
+                   }
+                       /// val2 is base, val1 is offset
+                   else if (right->getType()->isPointerType()) {
+                       int base = val2 % 10000;
+                       int offset = val2 / 10000 + val1;
+                       result = base + offset * 10000;
+                   } else {
+                       result = val1 + val2;
+                   }
+                   break;
+               case BO_Sub:
+                   /// val1 is base, val2 is offset
+                   if (left->getType()->isPointerType()) {
+                       int base = val1 % 10000;
+                       int offset = val1 / 10000 - val2;
+                       result = base + offset * 10000;
+                   }
+                       /// val2 is base, val1 is offset
+                   else if (right->getType()->isPointerType()) {
+                       int base = val2 % 10000;
+                       int offset = val2 / 10000 - val1;
+                       result = base + offset * 10000;
+                   } else {
+                       result = val1 - val2;
+                   }
+                   break;
+               case BO_Mul:
+                   result = val1 * val2;
+                   break;
+               case BO_Div:
+                   result = val1 / val2;
+                   break;
+               case BO_Rem:
+                   result = val1 % val2;
+                   break;
+               case BO_GE:
+                   result = val1 >= val2;
+                   break;
+               case BO_GT:
+                   result = val1 > val2;
+                   break;
+               case BO_LE:
+                   result = val1 <= val2;
+                   break;
+               case BO_LT:
+                   result = val1 < val2;
+                   break;
+               case BO_EQ:
+                   result = val1 == val2;
+                   break;
+               case BO_NE:
+                   result = val1 != val2;
+                   break;
+               default:
+                   throw std::exception();
+                   break;
+           }
+           mStack.back().bindStmt(bop, result);
        }
    }
+
 
    void decl(DeclStmt * declstmt) {
 	   for (DeclStmt::decl_iterator it = declstmt->decl_begin(), ie = declstmt->decl_end();
 			   it != ie; ++ it) {
 		   Decl * decl = *it;
 		   if (VarDecl * vardecl = dyn_cast<VarDecl>(decl)) {
-			   mStack.back().bindDecl(vardecl, 0);
+               /// test03.c 这里因为 val 一直是0，所以会取得错误结果，需要改
+               // 这里需要改
+               QualType type = vardecl->getType();
+               if (type->isIntegerType()) {
+                   IntegerLiteral *integer;
+                   if (vardecl->hasInit() && (integer = dyn_cast<IntegerLiteral>(vardecl->getInit())))
+                       mStack.back().bindDecl(vardecl, integer->getValue().getSExtValue());
+                   else
+                       mStack.back().bindDecl(vardecl, 0);
+               }
 		   }
 	   }
    }
+
+   /// test01.c 这里会 assert 报错
    void declref(DeclRefExpr * declref) {
 	   mStack.back().setPC(declref);
 	   if (declref->getType()->isIntegerType()) {
@@ -168,6 +251,8 @@ public:
 		   llvm::errs() << val;
 	   } else {
 		   /// You could add your code here for Function call Return
+		   // 不是 buildin 的函数
+
 	   }
    }
 };

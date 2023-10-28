@@ -41,7 +41,29 @@ public:
 	   VisitStmt(expr);
 	   mEnv->cast(expr);
    }
+
+   /// test03.c 执行完if之后还会执行else，需要做额外操作不让他执行else
+   // 添加完这么多之后可以正常获结果
+    virtual void VisitIfStmt(IfStmt * ifstmt) {
+        Expr * cond = ifstmt->getCond();
+
+        /// 来自：https://github.com/ChinaNuke/ast-interpreter/commit/fe0f6c357ebd105755def932f538b006a919b35b
+        // 此处不能用 VisitStmt() 因为它只会取出参数的所有子节点进行遍历而忽略当前节点本身
+        // 比如对于一个 BinaryOperator，使用 VisitStmt() 会跳过 VisitBinaryOperator() 的执行
+        // 详见：clang/AST/EvaluatedExprVisitor.h: void VisitStmt(PTR(Stmt) S)
+        Visit(cond);
+
+        // 根据 cond 判断的结果只去 Visit 需要执行的子树
+        if (mEnv->getExprValue(cond)) {
+            VisitStmt(ifstmt->getThen());
+        } else {
+            // 应该可以自动应对没有 Else 分支的情况，未做测试
+            VisitStmt(ifstmt->getElse());
+        }
+    }
+
    virtual void VisitCallExpr(CallExpr * call) {
+
 	   VisitStmt(call);
 	   mEnv->call(call);
    }
