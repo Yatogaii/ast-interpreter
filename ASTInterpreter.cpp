@@ -107,8 +107,8 @@ public:
         Expr * inc = forstmt->getInc();
         Stmt * body = forstmt->getBody();
 
-        Visit(init);
-        Visit(cond);
+        if(init) Visit(init);
+        if(cond) Visit(cond);
 
         // 每次循环都要重新 evaluate 一下 condition 的值，以更新 StackFrame 中保存的结果
         while (mEnv->getExprValue(cond)) {
