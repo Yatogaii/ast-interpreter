@@ -14,8 +14,8 @@ using namespace clang;
 class StackFrame {
    /// StackFrame maps Variable Declaration to Value
    /// Which are either integer or addresses (also represented using an Integer value)
-   std::map<Decl*, int> mVars;
-   std::map<Stmt*, int> mExprs;
+   std::map<Decl*, int64_t> mVars;
+   std::map<Stmt*, int64_t> mExprs;
    /// The current stmt
    Stmt * mPC;
    int returnValue;
@@ -26,20 +26,22 @@ public:
    StackFrame() : mVars(), mExprs(), mPC() {
    }
 
-   void bindDecl(Decl* decl, int val) {
+   void bindDecl(Decl* decl, int64_t val) {
       mVars[decl] = val;
    }    
-   int getDeclVal(Decl * decl) {
+   int64_t getDeclVal(Decl * decl) {
       assert (mVars.find(decl) != mVars.end());
       return mVars.find(decl)->second;
    }
-   void bindStmt(Stmt * stmt, int val) {
+   void bindStmt(Stmt * stmt, int64_t val) {
 	   mExprs[stmt] = val;
    }
-   int getStmtVal(Stmt * stmt) {
+   int64_t getStmtVal(Stmt * stmt) {
 	   assert (mExprs.find(stmt) != mExprs.end());
 	   return mExprs[stmt];
    }
+
+
    void setPC(Stmt * stmt) {
 	   mPC = stmt;
    }
@@ -59,10 +61,18 @@ public:
 };
 */
 
+//class Heap{
+//public:
+//    std::vector<int64_t> datas;
+//    int curBaseAddr = 0;
+//};
+
 class Environment {
 public:
 
     std::vector<StackFrame> mStack;
+    // 堆，先不考虑变长数组
+    std::vector<std::vector<int64_t>> mHeap;
 
 
     FunctionDecl * mFree;				/// Declartions to the built-in functions
@@ -114,6 +124,15 @@ public:
        mStack.back().bindStmt(integer, integer->getValue().getSExtValue());
    }
 
+   void array(ArraySubscriptExpr* arrExpr){
+       // 获取Base和Inx
+       int64_t vIdx = mStack.back().getStmtVal(arrExpr->getBase());
+       auto aIdx = mStack.back().getStmtVal(arrExpr->getIdx());
+
+       int64_t val = mHeap[vIdx][aIdx];
+       mStack.back().bindStmt(arrExpr, val);
+   }
+
    /// test04.c 处理 a=-10 中的 -
    void unaop(UnaryOperator *uop){
        // 保存此一元表达式的值到栈帧
@@ -134,22 +153,46 @@ public:
    void binop(BinaryOperator *bop) {
 	   Expr * left = bop->getLHS();
 	   Expr * right = bop->getRHS();
+        int64_t result = 0; // 保存当前二元表达式的计算结果
+
+        // 赋值运算：=, *=, /=, %=, +=, -=, ...
+        // 算数和逻辑运算：+, -, *, /, %, <<, >>, &, ^, |
+
+        int64_t leftValue = mStack.back().getStmtVal(left);
+        int64_t rightValue = mStack.back().getStmtVal(right);
 
 	   if (bop->isAssignmentOp()) {
            // 36 行的 assert 是从 map 里取不到值，应该需要先执行 bind
            // 应该不能手动 bind ，先 debug 过一遍流程吧
            // 需要在执行 bop 前，把 val 写进 mEnv 的 Stack
-           // int val = getExprValue(right);
-		   int val = mStack.back().getStmtVal(right);
-		   mStack.back().bindStmt(left, val);
-		   if (DeclRefExpr * declexpr = dyn_cast<DeclRefExpr>(left)) {
-			   Decl * decl = declexpr->getFoundDecl();
-			   mStack.back().bindDecl(decl, val);
-		   }
+		   //int val = mStack.back().getStmtVal(right);
+		   //mStack.back().bindStmt(left, val);
+		   //if (DeclRefExpr * declexpr = dyn_cast<DeclRefExpr>(left)) {
+			//   Decl * decl = declexpr->getFoundDecl();
+			//   mStack.back().bindDecl(decl, val);
+		   //}
+
+           int val = mStack.back().getStmtVal(right);
+           /// 目前为止只有数组和指针能做左值
+           if (llvm::isa<ArraySubscriptExpr>(left)) {
+               ArraySubscriptExpr *array = llvm::dyn_cast<ArraySubscriptExpr>(left);
+               int vIdx = mStack.back().getStmtVal(array->getBase());
+               int aIdx = mStack.back().getStmtVal(array->getIdx());
+               if (array->getType()->isIntegerType() || array->getType()->isPointerType()) {
+                   mHeap[vIdx][aIdx] = val;
+               } else {
+                   throw std::exception();
+               }
+               return;
+           }
+           mStack.back().bindStmt(left, val);
+           if (DeclRefExpr *declexpr = dyn_cast<DeclRefExpr>(left)) {
+               Decl *decl = declexpr->getFoundDecl();
+               mStack.back().bindDecl(decl, val);
+           }
 	   } else if(bop->isAdditiveOp() || bop->isMultiplicativeOp() || bop->isComparisonOp()){
            int val1 = mStack.back().getStmtVal(left);
            int val2 = mStack.back().getStmtVal(right);
-           int result;
            switch (bop->getOpcode()) {
                case BO_Add:
                    /// val1 is base, val2 is offset
@@ -233,6 +276,35 @@ public:
                        mStack.back().bindDecl(vardecl, integer->getValue().getSExtValue());
                    else
                        mStack.back().bindDecl(vardecl, 0);
+               } else if(type->isArrayType()){
+                   // 获取数组类型并确定其大小
+                   const ConstantArrayType *arrayType = dyn_cast<ConstantArrayType>(type.getTypePtr());
+                   int arraySize = arrayType->getSize().getSExtValue();
+
+                   // 创建一个数组来保存初始值或默认值
+                   // 这个数组指针是用来存放在 bindDecl 里的
+                   // 这里必须 malloc 让他一直在内存里泄漏，要不然作用域过去了就没了
+                   //int64_t* arrayValues = (int64_t *)malloc(arraySize*sizeof(int64_t));  // 默认初始化为0
+
+                   std::vector<int64_t> arrayValues(arraySize,0);
+                   if (vardecl->hasInit()) {
+                       // 如果有初始值，则提取并存储
+                       const InitListExpr *initList = dyn_cast<InitListExpr>(vardecl->getInit());
+                       for (int i = 0; i < initList->getNumInits() && i < arraySize; i++) {
+                           const IntegerLiteral *initValue = dyn_cast<IntegerLiteral>(initList->getInit(i));
+                           arrayValues[i] = initValue->getValue().getSExtValue();
+                       }
+                   } else { // 没有初识值，全写0
+                       // 切换到vector之后就不用操作了
+                   }
+
+                   // 将数组的值与声明绑定
+                   /// test12.c 直接存放地址会报错，还是用一个全局的堆
+                   ///mStack.back().bindDecl(vardecl, (int64_t)arrayValues);
+                   // 存放数组，并且获取对应的idx
+                   mHeap.push_back(arrayValues);
+                   int64_t idx = mHeap.size()-1;
+                   mStack.back().bindDecl(vardecl, idx);
                }
 		   }
 	   }
@@ -243,19 +315,31 @@ public:
 	   mStack.back().setPC(declref);
 	   if (declref->getType()->isIntegerType()) {
 		   Decl* decl = declref->getFoundDecl();
-
 		   int val = mStack.back().getDeclVal(decl);
 		   mStack.back().bindStmt(declref, val);
-	   }
+	   } else if (declref->getType()->isArrayType()){ /// test12.c 需要支持数组
+           Decl* decl = declref->getFoundDecl();
+            /// test12.c 这一句会报错，猜测是没有正确处理 decl 里面的数组定义
+           int64_t idx = mStack.back().getDeclVal(decl);
+           mStack.back().bindStmt(declref, idx);
+       } else if (declref->getType()->isPointerType()){ /// test14.c 需要支持数组
+           Decl* decl = declref->getFoundDecl();
+
+           int64_t val = mStack.back().getDeclVal(decl);
+           mStack.back().bindStmt(declref, val);
+       }
    }
 
    void cast(CastExpr * castexpr) {
 	   mStack.back().setPC(castexpr);
-	   if (castexpr->getType()->isIntegerType()) {
+	   if ((castexpr->getType()->isIntegerType())
+       || (castexpr->getCastKind() == CK_ArrayToPointerDecay)) {
 		   Expr * expr = castexpr->getSubExpr();
 		   int val = mStack.back().getStmtVal(expr);
 		   mStack.back().bindStmt(castexpr, val );
-	   }
+	   } else {
+           castexpr->dump();
+       }
    }
 
    /// !TODO Support Function Call

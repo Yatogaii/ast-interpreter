@@ -64,7 +64,17 @@ public:
 	   mEnv->cast(expr);
    }
 
-   /// test03.c 执行完if之后还会执行else，需要做额外操作不让他执行else
+   /// test12.c 开始着手支持数组
+    virtual void VisitArraySubscriptExpr(ArraySubscriptExpr *arrayExpr) {
+       // 下面这个 VisitStmt 是为了计算 Base和 Idx
+        //VisitStmt(arrayExpr);
+        Visit(arrayExpr->getBase());
+       Visit(arrayExpr->getIdx());
+        mEnv->array(arrayExpr);
+    }
+
+
+    /// test03.c 执行完if之后还会执行else，需要做额外操作不让他执行else
    // 添加完这么多之后可以正常获结果
     virtual void VisitIfStmt(IfStmt * ifstmt) {
         //ifstmt->dump();
