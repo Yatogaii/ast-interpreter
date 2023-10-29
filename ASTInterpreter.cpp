@@ -29,14 +29,14 @@ public:
 
     // 字面量整型没有子语句，所以不用 VisitStmt()
     virtual void VisitIntegerLiteral(IntegerLiteral *integer){
-//        integer->dump();
+        //integer->dump();
         mEnv->integer(integer);
     }
 
     /// test05.c 维护while语句
     virtual void VisitWhileStmt(WhileStmt * whilestmt) {
+       //whilestmt->dump();
         // clang/AST/Stmt.h: class WhileStmt
-
         Expr * cond = whilestmt->getCond();
         Stmt * body = whilestmt->getBody();
 
@@ -53,7 +53,6 @@ public:
     virtual void VisitUnaryOperator(UnaryOperator * uop){
         VisitStmt(uop);
         mEnv->unaop(uop);
-
    }
 
     virtual void VisitDeclRefExpr(DeclRefExpr * expr) {
@@ -68,6 +67,7 @@ public:
    /// test03.c 执行完if之后还会执行else，需要做额外操作不让他执行else
    // 添加完这么多之后可以正常获结果
     virtual void VisitIfStmt(IfStmt * ifstmt) {
+        //ifstmt->dump();
         Expr * cond = ifstmt->getCond();
 
         /// 来自：https://github.com/ChinaNuke/ast-interpreter/commit/fe0f6c357ebd105755def932f538b006a919b35b
@@ -78,7 +78,10 @@ public:
 
         // 根据 cond 判断的结果只去 Visit 需要执行的子树
         if (mEnv->getExprValue(cond)) {
-            VisitStmt(ifstmt->getThen());
+            //ifstmt->getThen()->dump();
+            /// test10.c 为什么这里把VisitStmt换成Visit就能正确获取结果了？
+            // VisitStmt(ifstmt->getThen());
+            Visit(ifstmt->getThen());
         } else {
             if (Stmt * elseStmt = ifstmt->getElse()) {
                 Visit(elseStmt);
