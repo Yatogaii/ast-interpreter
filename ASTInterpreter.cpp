@@ -108,11 +108,48 @@ public:
         }
     }
 
+    /// test14.c 还是会报错：int StackFrame::getDeclVal(clang::Decl*): Assertion `mVars.find(decl) != mVars.end()' failed.
    virtual void VisitCallExpr(CallExpr * call) {
+       // 为了区分内建函数和正常函数，需要额外判断。
+       FunctionDecl * callee = call->getDirectCallee();
+       if(callee == mEnv->mFree || callee == mEnv->mOutput || callee == mEnv->mInput || callee == mEnv->mMalloc){
+           VisitStmt(call);
+           mEnv->call(call);
+       } else { // 非自建函数，新建一个函数堆栈之后再 visit
+           // 这里必须先visit，要不之后的获取参数会报错
+           VisitStmt(call);
+           StackFrame newFrame = StackFrame();
 
-	   VisitStmt(call);
-	   mEnv->call(call);
+           for (int i = 0; i <  callee->getNumParams(); i++) {
+               newFrame.bindDecl(
+                       callee->getParamDecl(i),
+                       mEnv->mStack.back().getStmtVal(call->getArg(i))
+               );
+           }
+            mEnv->mStack.push_back(newFrame);
+           /// test14.c 这里一定要 visit body 否则会报错。
+           VisitStmt(call->getDirectCallee()->getBody());
+           mEnv->call(call);
+           // 先获取返回值
+           int ret = mEnv->mStack.back().getReturnValue();
+           mEnv->mStack.pop_back();
+           mEnv->mStack.back().bindStmt(call, ret);
+       }
    }
+
+   // 需要保存返回值
+    virtual void VisitReturnStmt(ReturnStmt * ret) {
+        // 计算返回值，但不在此处进行返回操作，因为有的函数可能不含有 ReturnStmt.
+
+        /// TODO: 考虑 main 函数返回的特殊情况:FunctionDecl isMain()
+        /// TODO: 考虑没有返回语句的情况
+
+        VisitStmt(ret);
+
+        // clang/AST/Stmt.h: class ReturnStmt
+        mEnv->retstmt(ret);
+    }
+
    virtual void VisitDeclStmt(DeclStmt * declstmt) {
 	   mEnv->decl(declstmt);
    }

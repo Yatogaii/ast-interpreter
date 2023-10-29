@@ -18,7 +18,11 @@ class StackFrame {
    std::map<Stmt*, int> mExprs;
    /// The current stmt
    Stmt * mPC;
+   int returnValue;
 public:
+    void setReturnValue(int ret){ returnValue=ret;}
+    int getReturnValue(){return returnValue;}
+
    StackFrame() : mVars(), mExprs(), mPC() {
    }
 
@@ -56,15 +60,17 @@ public:
 */
 
 class Environment {
-   std::vector<StackFrame> mStack;
+public:
 
-   FunctionDecl * mFree;				/// Declartions to the built-in functions
+    std::vector<StackFrame> mStack;
+
+
+    FunctionDecl * mFree;				/// Declartions to the built-in functions
    FunctionDecl * mMalloc;
    FunctionDecl * mInput;
    FunctionDecl * mOutput;
 
    FunctionDecl * mEntry;
-public:
    /// Get the declartions to the built-in functions
    Environment() : mStack(), mFree(NULL), mMalloc(NULL), mInput(NULL), mOutput(NULL), mEntry(NULL) {
    }
@@ -97,6 +103,11 @@ public:
             return mStack.back().getStmtVal(expr);
         }
     }
+
+    // 通过 retStmt 之前 bind过的 StmtVal 来获取具体的返回值
+    void retstmt(ReturnStmt * ret){
+       mStack.back().setReturnValue(mStack.back().getStmtVal(ret->getRetValue()));
+   }
 
     //  提前存入 integer 的变量
     void integer(IntegerLiteral *integer){
