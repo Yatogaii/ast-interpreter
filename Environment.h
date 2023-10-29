@@ -41,7 +41,6 @@ public:
 	   return mExprs[stmt];
    }
 
-
    void setPC(Stmt * stmt) {
 	   mPC = stmt;
    }
