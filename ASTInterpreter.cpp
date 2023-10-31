@@ -55,6 +55,12 @@ public:
         mEnv->unaop(uop);
    }
 
+   /// test17.c 添加 sizeof 的支持
+   virtual void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr* expr){
+       VisitStmt(expr);
+       mEnv->uette(expr);
+   }
+
     virtual void VisitDeclRefExpr(DeclRefExpr * expr) {
 	   VisitStmt(expr);
 	   mEnv->declref(expr);
