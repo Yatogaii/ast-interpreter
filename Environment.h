@@ -165,6 +165,7 @@ public:
                 break;
             }
             case UO_Deref: {
+                /// test18.c 需要考虑双重指针
                 int64_t vIdx = mStack.back().getStmtVal(uop->getSubExpr());
                 // 分别是地址和值
                 mStack.back().bindPtr(uop, vIdx, mHeap[vIdx]);
@@ -175,6 +176,11 @@ public:
             }
         }
         mStack.back().bindStmt(uop, result);
+    }
+
+    /// test18.c 新增括号的支持
+    void paren(ParenExpr *parenexpr) {
+        mStack.back().bindStmt(parenexpr, mStack.back().getStmtVal(parenexpr->getSubExpr()));
     }
 
     /// test17.c support sizeof
@@ -190,14 +196,11 @@ public:
         mStack.back().bindStmt(uettop, result);
     }
 
-    /// !TODO Support comparison operation
+    /// test18.c 在第六个 binop 处报错
     void binop(BinaryOperator *bop) {
         Expr *left = bop->getLHS();
         Expr *right = bop->getRHS();
         int64_t result = 0;// 保存当前二元表达式的计算结果
-
-        // 赋值运算：=, *=, /=, %=, +=, -=, ...
-        // 算数和逻辑运算：+, -, *, /, %, <<, >>, &, ^, |
 
         int64_t leftValue = mStack.back().getStmtVal(left);
         // right->dump();
@@ -246,16 +249,8 @@ public:
             switch (bop->getOpcode()) {
                 case BO_Add:
                     /// val1 is base, val2 is offset
-                    if (left->getType()->isPointerType()) {
-                        int base = val1 % 10000;
-                        int offset = val1 / 10000 + val2;
-                        result = base + offset * 10000;
-                    }
-                    /// val2 is base, val1 is offset
-                    else if (right->getType()->isPointerType()) {
-                        int base = val2 % 10000;
-                        int offset = val2 / 10000 + val1;
-                        result = base + offset * 10000;
+                    if (left->getType()->isPointerType() || right->getType()->isPointerType()) {
+                        result = val1 + val2;
                     } else {
                         result = val1 + val2;
                     }

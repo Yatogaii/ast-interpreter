@@ -55,6 +55,12 @@ public:
         mEnv->unaop(uop);
    }
 
+   /// test18.c 支持括号
+   virtual void VisitParenExpr(ParenExpr* pop){
+        VisitStmt(pop);
+        mEnv->paren(pop);
+   }
+
    /// test17.c 添加 sizeof 的支持
    virtual void VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr* expr){
        VisitStmt(expr);
