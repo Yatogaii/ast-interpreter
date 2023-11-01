@@ -281,6 +281,15 @@ public:
                 case BO_Sub:
                         result = val1 - val2;
                     break;
+                case BO_Mul:
+                    result = val1 * val2;
+                    break;
+                case BO_Div:
+                    result = val1 / val2;
+                    break;
+                case BO_Rem:
+                    result = val1 % val2;
+                    break;
                 case BO_GE:
                     result = val1 >= val2;
                     break;
