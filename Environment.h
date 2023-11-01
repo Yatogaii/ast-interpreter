@@ -25,9 +25,11 @@ class StackFrame {
     Stmt *mPC;
     int returnValue;
 
+
 public:
     void setReturnValue(int ret) { returnValue = ret; }
     int getReturnValue() { return returnValue; }
+
 
     StackFrame() : mVars(), mExprs(), mPC() {
     }
@@ -89,7 +91,7 @@ public:
     // 不能用二维的了，必须一个数组固定长度，比如*a 是100 *(a+1)是101
     std::vector<int64_t> mHeap;
 
-
+    int depth = 0;
 
     FunctionDecl *mFree;/// Declartions to the built-in functions
     FunctionDecl *mMalloc;
@@ -119,6 +121,7 @@ public:
         }
         // 这里应该是 push 进一个main函数，一个函数对应一个 stack
         mStack.push_back(StackFrame());
+        depth++;
     }
 
     FunctionDecl *getEntry() {
@@ -367,7 +370,8 @@ public:
 
     /// test01.c 这里会 assert 报错
     /// test17.c 这里需要支持 malloc 函数
-    /// test22-24.c 啥都没干就过了，输出都是2442，对吗
+    /// test22-24.c 啥都没干就过了，输出都是2442，对吗，24不对
+
     void declref(DeclRefExpr *declref) {
         mStack.back().setPC(declref);
         if (declref->getType()->isIntegerType()) {
