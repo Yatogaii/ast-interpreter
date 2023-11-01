@@ -367,6 +367,7 @@ public:
 
     /// test01.c 这里会 assert 报错
     /// test17.c 这里需要支持 malloc 函数
+    /// test22-24.c 啥都没干就过了，输出都是2442，对吗
     void declref(DeclRefExpr *declref) {
         mStack.back().setPC(declref);
         if (declref->getType()->isIntegerType()) {
