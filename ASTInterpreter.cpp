@@ -13,6 +13,8 @@
 
 using namespace clang;
 
+class ReturnException : public std::exception {};
+
 #include "Environment.h"
 
 class InterpreterVisitor : 
@@ -151,14 +153,18 @@ public:
            for (int i = 0; i <  callee->getNumParams(); i++) {
                newFrame.bindDecl(
                        //callee->getParamDecl(i),
-                        llvm::dyn_cast<ParmVarDecl>(callee->getDefinition()->getParamDecl(i)),
+                        callee->getDefinition()->getParamDecl(i),
                        mEnv->mStack.back().getStmtVal(call->getArg(i))
                );
            }
             mEnv->mStack.push_back(newFrame);
             mEnv->depth ++;
            /// test14.c 这里一定要 visit body 否则会报错。
+           try {
            VisitStmt(call->getDirectCallee()->getBody());
+           }catch (ReturnException e){
+
+           }
            /// test21.c 这里就不调用 mEnv->call 了
            // mEnv->call(call);
            // 先获取返回值
@@ -177,6 +183,7 @@ public:
 
         // clang/AST/Stmt.h: class ReturnStmt
         mEnv->retstmt(ret);
+        throw ReturnException();
     }
 
    virtual void VisitDeclStmt(DeclStmt * declstmt) {
@@ -195,10 +202,28 @@ public:
 
    virtual void HandleTranslationUnit(clang::ASTContext &Context) {
 	   TranslationUnitDecl * decl = Context.getTranslationUnitDecl();
+
+
+       /// 以下内容用于处理全局变量，来源： https://github.com/ChinaNuke/ast-interpreter/commit/e41f2254b0cf68e0243d5aff662f842882eade5d
+              /// 遍历全局变量声明以计算出它们的值，这些值保存在临时的初始栈帧中
+              /// TODO: 跟 mEnv->init() 函数里的循环有些重复，可以考虑优化一下
+              for (TranslationUnitDecl::decl_iterator i = decl->decls_begin(), e = decl->decls_end(); i != e; ++ i) {
+                  if (VarDecl *vdecl = dyn_cast<VarDecl>(*i)) {
+                  if (vdecl->hasInit()) {
+                      mVisitor.Visit(vdecl->getInit());
+                  }
+                  }
+              }
+
+
+
 	   mEnv.init(decl);
 
 	   FunctionDecl * entry = mEnv.getEntry();
-	   mVisitor.VisitStmt(entry->getBody());
+       try {
+           mVisitor.VisitStmt(entry->getBody());
+       } catch (ReturnException e) {
+       }
   }
 private:
    Environment mEnv;

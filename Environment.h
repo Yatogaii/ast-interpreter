@@ -30,6 +30,13 @@ public:
     void setReturnValue(int ret) { returnValue = ret; }
     int getReturnValue() { return returnValue; }
 
+    bool hasStmt(Stmt * stmt) {
+        return (mExprs.find(stmt) != mExprs.end());
+    }
+
+    bool hasDecl(Decl* decl) {
+        return (mVars.find(decl) != mVars.end());
+    }
 
     StackFrame() : mVars(), mExprs(), mPC() {
     }
@@ -91,6 +98,9 @@ public:
     // 不能用二维的了，必须一个数组固定长度，比如*a 是100 *(a+1)是101
     std::vector<int64_t> mHeap;
 
+    // 存放全局变量
+    std::map<Decl*, int64_t> gVars;
+
     int depth = 0;
 
     FunctionDecl *mFree;/// Declartions to the built-in functions
@@ -101,6 +111,7 @@ public:
     FunctionDecl *mEntry;
     /// Get the declartions to the built-in functions
     Environment() : mStack(), mFree(NULL), mMalloc(NULL), mInput(NULL), mOutput(NULL), mEntry(NULL) {
+        mStack.push_back(StackFrame()); // 初始栈帧，用于临时存储计算的全局变量值
     }
 
 
@@ -117,9 +128,18 @@ public:
                     mOutput = fdecl;
                 else if (fdecl->getName().equals("main"))
                     mEntry = fdecl;
+            }else if (VarDecl *vdecl = dyn_cast<VarDecl>(*i)) {
+                // 保存全局变量
+                Stmt * initStmt = vdecl->getInit();
+                if (mStack.back().hasStmt(initStmt)) {
+                    gVars[vdecl] = mStack.back().getStmtVal(initStmt);
+                } else {
+                    gVars[vdecl] = 0; // 未初始化的全局变量默认为 0
+                }
             }
         }
         // 这里应该是 push 进一个main函数，一个函数对应一个 stack
+        mStack.pop_back();
         mStack.push_back(StackFrame());
         depth++;
     }
@@ -259,29 +279,7 @@ public:
                     }
                     break;
                 case BO_Sub:
-                    /// val1 is base, val2 is offset
-                    if (left->getType()->isPointerType()) {
-                        int base = val1 % 10000;
-                        int offset = val1 / 10000 - val2;
-                        result = base + offset * 10000;
-                    }
-                    /// val2 is base, val1 is offset
-                    else if (right->getType()->isPointerType()) {
-                        int base = val2 % 10000;
-                        int offset = val2 / 10000 - val1;
-                        result = base + offset * 10000;
-                    } else {
                         result = val1 - val2;
-                    }
-                    break;
-                case BO_Mul:
-                    result = val1 * val2;
-                    break;
-                case BO_Div:
-                    result = val1 / val2;
-                    break;
-                case BO_Rem:
-                    result = val1 % val2;
                     break;
                 case BO_GE:
                     result = val1 >= val2;
@@ -376,19 +374,38 @@ public:
         mStack.back().setPC(declref);
         if (declref->getType()->isIntegerType()) {
             Decl *decl = declref->getFoundDecl();
-            int val = mStack.back().getDeclVal(decl);
+            /// test1.c 添加全局变量的支持
+            int val;
+            if (mStack.back().hasDecl(decl)) {
+                val = mStack.back().getDeclVal(decl);
+            } else {
+                assert (gVars.find(decl) != gVars.end());
+                val = gVars[decl];
+            }
             mStack.back().bindStmt(declref, val);
         } else if (declref->getType()->isArrayType()) {/// test12.c 需要支持数组
             Decl *decl = declref->getFoundDecl();
             /// test12.c 这一句会报错，猜测是没有正确处理 decl 里面的数组定义
-            int64_t idx = mStack.back().getDeclVal(decl);
-            mStack.back().bindStmt(declref, idx);
+            int val;
+            if (mStack.back().hasDecl(decl)) {
+                val = mStack.back().getDeclVal(decl);
+            } else {
+                assert (gVars.find(decl) != gVars.end());
+                val = gVars[decl];
+            }
+            mStack.back().bindStmt(declref, val);
         } else if (declref->getType()->isPointerType()
                    //&& declref->getType()->getAs<PointerType>()->getPointeeType()->isFunctionType()
                    ) {/// test14.c 需要支持数组
             Decl *decl = declref->getFoundDecl();
 
-            int64_t val = mStack.back().getDeclVal(decl);
+            int val;
+            if (mStack.back().hasDecl(decl)) {
+                val = mStack.back().getDeclVal(decl);
+            } else {
+                assert (gVars.find(decl) != gVars.end());
+                val = gVars[decl];
+            }
             mStack.back().bindStmt(declref, val);
         } else if (declref->getType()->isFunctionType()) {
          //   Decl *decl = declref->getFoundDecl();
