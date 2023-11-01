@@ -251,7 +251,6 @@ int main (int argc, char ** argv) {
         std::ifstream t(filename);
         std::string buffer((std::istreambuf_iterator<char>(t)),
                            std::istreambuf_iterator<char>());
-        std::cout << buffer << std::endl;
         clang::tooling::runToolOnCode(std::unique_ptr<clang::FrontendAction>(new InterpreterClassAction), buffer);
     }
 //   if (argc > 1) {
